@@ -162,6 +162,9 @@ async def handle_webhook_event(webhook):
                 logger.debug(f"Replicating received message: {message}\nfrom: {sender_info}")
                 
                 config = load_config()
+                if not check_sender(sender_info, bot_info, config):
+                    logger.debug(f"sender check failed, broadcast not allowed")
+                    return
                 
                 if message.html is not None:
                     msg_markdown = re.sub(r"<spark-mention.*\/spark-mention>[\s]*", "", message.html)
@@ -173,9 +176,11 @@ async def handle_webhook_event(webhook):
                     local_loop = asyncio.get_event_loop()
                     task_list = []
                     async for room_id in get_room_membership(room_type = ["group"]):
-                        task_list.append(local_loop.run_in_executor(executor, create_message, room_id, group_msg))
+                        if check_destination(room_id, sender_info, bot_info, config):
+                            task_list.append(local_loop.run_in_executor(executor, create_message, room_id, group_msg))
                     async for room_id in get_room_membership(room_type = ["direct"]):
-                        task_list.append(local_loop.run_in_executor(executor, create_message, room_id, direct_msg))
+                        if check_destination(room_id, sender_info, bot_info, config):
+                            task_list.append(local_loop.run_in_executor(executor, create_message, room_id, direct_msg))
                     
                     for msg_result in await asyncio.gather(*task_list):
                         logger.info(f"messsage create result: {msg_result}")
@@ -234,6 +239,36 @@ def create_message(room_id, kwargs):
         return result
     except ApiError as e:
         logger.error(f"Create message failed: {e}.")
+        
+def check_sender(sender_info, bot_info, config):
+    result = True
+    if config["source"]["bots_own_org"]:
+        logger.debug(f"check sender & bot orgId: {sender_info.orgId == bot_info.orgId}")
+        result = sender_info.orgId == bot_info.orgId
+    if config["source"]["from_sender_list"]:
+        logger.debug(f'check sender in sender_list: {sender_info.emails[0] in config["source"]["sender_list"]}')
+        result &= sender_info.emails[0] in config["source"]["sender_list"]
+        
+    logger.debug(f"check sender result: {result}")
+    return result
+        
+def check_destination(room_id, sender_info, bot_info, config):
+    result = check_sender(sender_info, bot_info, config)
+    if result and (config["destination"]["bots_own_org"] or config["destination"]["senders_own_org"]):
+        try:
+            room_info = webex_api.rooms.get(room_id)
+            logger.debug(f"destination room info: {room_info}")
+            if config["destination"]["bots_own_org"]:
+                logger.debug(f"check room owner orgId and bot's orgId: {room_info.ownerId == bot_info.orgId}")
+                result = room_info.ownerId == bot_info.orgId
+            if config["destination"]["senders_own_org"]:
+                logger.debug(f"check room owner orgId and sender's orgId: {room_info.ownerId == sender_info.orgId}")
+                result &= room_info.ownerId == sender_info.orgId
+        except ApiError as e:
+            logger.error(f"get room info failed: {e}.")
+            return False
+    logger.debug(f"final result: {result}")
+    return result
 
 async def manage_webhooks(target_url):
     """create a set of webhooks for the Bot
@@ -305,15 +340,24 @@ def create_webhook(resource, event, target_url):
 def secure_scheme(scheme):
     return re.sub(r"^http$", "https", scheme)
     
-def load_config(file_name = "default_config.json"):
+def load_config(default_config_file = "default_config.json", user_config_file = "config/config.json"):
     try:
-        with open(file_name) as cfg_file:
+        with open(default_config_file) as cfg_file:
             config = json.load(cfg_file)
     except Exception as e:
-        logger.error(f"configuration load failed: {e}")
+        logger.error(f"default configuration load failed: {e}")
         config = DEFAULT_CONFIG
+        
+    try:
+        with open(user_config_file) as cfg_file:
+            user_config = json.load(cfg_file)
+            logger.debug(f"user configuration: {user_config}")
+            
+        config = config | user_config
+    except Exception as e:
+        logger.error(f"user configuration load failed: {e}")
 
-    logger.debug(f"configuration: {config}")
+    logger.debug(f"current configuration: {config}")
     return config
 
 """
