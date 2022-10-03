@@ -41,6 +41,23 @@ from flask import Flask, request, redirect, url_for, make_response
 
 DEFAULT_AVATAR_URL= "http://bit.ly/SparkBot-512x512"
 PORT=5050
+DEFAULT_CONFIG = json.loads("""
+{
+  "source": {
+    "bots_own_org": true,
+    "from_sender_list": false,
+    "sender_list": {}
+  },
+  "destination": {
+    "bots_own_org": false,
+    "senders_own_org": true
+  },
+  "membership": {
+    "bots_own_org": false
+  }
+}
+""")
+
 
 flask_app = Flask(__name__)
 flask_app.config["DEBUG"] = True
@@ -143,6 +160,9 @@ async def handle_webhook_event(webhook):
                 message = webex_api.messages.get(webhook["data"].get("id"))
                 sender_info = webex_api.people.get(webhook["data"].get("personId"))
                 logger.debug(f"Replicating received message: {message}\nfrom: {sender_info}")
+                
+                config = load_config()
+                
                 if message.html is not None:
                     msg_markdown = re.sub(r"<spark-mention.*\/spark-mention>[\s]*", "", message.html)
                 else:
@@ -284,6 +304,17 @@ def create_webhook(resource, event, target_url):
     
 def secure_scheme(scheme):
     return re.sub(r"^http$", "https", scheme)
+    
+def load_config(file_name = "default_config.json"):
+    try:
+        with open(file_name) as cfg_file:
+            config = json.load(cfg_file)
+    except Exception as e:
+        logger.error(f"configuration load failed: {e}")
+        config = DEFAULT_CONFIG
+
+    logger.debug(f"configuration: {config}")
+    return config
 
 """
 Independent thread startup, see:

@@ -1,0 +1,14 @@
+{
+  "source": {
+    "bots_own_org": true,
+    "from_sender_list": false,
+    "sender_list": {}
+  },
+  "destination": {
+    "bots_own_org": false,
+    "senders_own_org": true
+  },
+  "membership": {
+    "bots_own_org": false
+  }
+}
