@@ -143,7 +143,10 @@ async def handle_webhook_event(webhook):
                 message = webex_api.messages.get(webhook["data"].get("id"))
                 sender_info = webex_api.people.get(webhook["data"].get("personId"))
                 logger.debug(f"Replicating received message: {message}\nfrom: {sender_info}")
-                msg_markdown = message.html if message.html is not None else message.text
+                if message.html is not None:
+                    msg_markdown = re.sub(r"<spark-mention.*\/spark-mention>[\s]*", "", message.html)
+                else:
+                    msg_markdown = message.text
                 group_msg = {"markdown": f"Message from <@personId:{sender_info.id}>:  \n\n{msg_markdown}", "files": message.files}
                 direct_msg = {"markdown": f"Message from {sender_info.displayName} ({sender_info.emails[0]}):  \n\n{msg_markdown}", "files": message.files}
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
