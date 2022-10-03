@@ -349,7 +349,8 @@ def load_config(default_config_file = "default_config.json", user_config_file = 
         config = DEFAULT_CONFIG
         
     try:
-        with open(user_config_file) as cfg_file:
+        cfg = os.getenv("CONFIG_FILE", user_config_file)
+        with open(cfg) as cfg_file:
             user_config = json.load(cfg_file)
             logger.debug(f"user configuration: {user_config}")
             
