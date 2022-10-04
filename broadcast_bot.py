@@ -5,6 +5,7 @@ import io
 import sys
 import signal
 import json
+import codecs
 import re
 import _thread
 import time
@@ -58,6 +59,10 @@ DEFAULT_CONFIG = json.loads("""
 }
 """)
 
+EMPTY_CARD = {
+    "contentType": "application/vnd.microsoft.card.adaptive",
+    "content": None,
+}
 
 flask_app = Flask(__name__)
 flask_app.config["DEBUG"] = True
@@ -216,20 +221,35 @@ def create_message(room_id, kwargs):
                 file_name = re.findall(r"^attachment;.*filename=\"(.*)\"", disp)[0]
                 content_type = response.getheader("Content-Type")
                 logger.debug(f"received \"{file_name}\" of \"{content_type}\"")
+                if content_type == "application/json":
+                    logger.debug(f"JSON file {file_name} detected, trying to create an adaptive card")
+                    reader = codecs.getreader("utf-8")
+                    try:
+                        form = json.load(reader(response))
+                        msg_data["attachments"] = [wrap_form(form)]
+                        msg_data.pop("files", None) # remove file attachment
+                        msg_data["markdown"] = "Form attached"
+                        try:
+                            result = webex_api.messages.create(**msg_data)
+                        except ApiError as e:
+                            logger.error(f"create message failed: {e}.")
+                    except Exception as e:
+                        logger.error(f"create attachment card error: {e}")
+                else:
                 # reader = io.BufferedReader(response)
-                msg_data["files"] = (file_name, response.data, content_type) # Webex API allows only a single file attachment
+                    msg_data["files"] = (file_name, response.data, content_type) # Webex API allows only a single file attachment
                 
-            # logger.debug(f"sending to Webex API: {msg_data}")
-            multipart_data = MultipartEncoder(msg_data)
-            multi_headers = {'Content-type': multipart_data.content_type}
-            logger.debug(f"multipart headers: {multi_headers}")
+                    # logger.debug(f"sending to Webex API: {msg_data}")
+                    multipart_data = MultipartEncoder(msg_data)
+                    multi_headers = {'Content-type': multipart_data.content_type}
+                    logger.debug(f"multipart headers: {multi_headers}")
 
-            try:
-                json_data = webex_api.messages._session.post('messages', data=multipart_data, headers=multi_headers)
-                result = webex_api.messages._object_factory('message', json_data)
-                logger.debug(f"message with file created: {result}")
-            except Exception as e:
-                logger.error(f"create message with attachment failed: {e}")
+                    try:
+                        json_data = webex_api.messages._session.post('messages', data=multipart_data, headers=multi_headers)
+                        result = webex_api.messages._object_factory('message', json_data)
+                        logger.debug(f"message with file created: {result}")
+                    except Exception as e:
+                        logger.error(f"create message with attachment failed: {e}")
 
             for response in responses:
                 response.release_conn()            
@@ -361,6 +381,12 @@ def load_config(default_config_file = "default_config.json", user_config_file = 
 
     logger.debug(f"current configuration: {config}")
     return config
+    
+def wrap_form(form):
+    card = EMPTY_CARD
+    card["content"] = form
+    
+    return card
 
 """
 Independent thread startup, see:
