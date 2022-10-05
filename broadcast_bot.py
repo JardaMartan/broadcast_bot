@@ -7,6 +7,7 @@ import signal
 import json
 import codecs
 import re
+import base64
 import _thread
 import time
 import concurrent.futures
@@ -192,6 +193,25 @@ async def handle_webhook_event(webhook):
                         logger.info(f"messsage create result: {msg_result}")
             except ApiError as e:
                 logger.error(f"Get message failed: {e}.")
+                
+    elif webhook.get("resource") == "memberships":
+        actor_info = webex_api.people.get(webhook["actorId"])
+        logger.info(f"my membership {webhook.get('event')} by {actor_info.displayName} ({actor_info.emails[0]}) in space {webhook['data']['roomId']}")
+        if webhook.get('event') == "created":
+            room_info = webex_api.rooms.get(webhook["data"]["roomId"])
+            logger.debug(f"room info: {room_info}")
+            if room_info.isAnnouncementOnly:
+                logger.debug(f"room is announcement_only, ask actor to make me a moderator")
+                room_decoded = base64.b64decode(room_info.id)
+                room_uuid = re.findall(r"ciscospark:.*\/([^/]+)", room_decoded.decode())[0]
+                room_url = f"webexteams://im?space={room_uuid}"
+                logger.debug(f"room UUID: {room_uuid}, URL: {room_url}")
+                ask_message = f"Space [{room_info.title}]({room_url}) is **Announcement only**, please make sure I am a moderator"
+                try:
+                    result = webex_api.messages.create(toPersonId = webhook["actorId"], markdown = ask_message)
+                    logger.debug(f"asked actor for moderation: {result}")
+                except ApiError as e:
+                    logger.error(f"failed to send message to {actor_info.emails[0]}: {e}")
             
 def create_message(room_id, kwargs):
     try:
@@ -324,7 +344,8 @@ async def manage_webhooks(target_url):
     
     resource_events = {
         "messages": ["created"],
-        "memberships": ["created", "deleted"],
+        "memberships": ["created", "deleted", "updated"],
+        "rooms": ["updated"]
         # "attachmentActions": ["created"]
     }
     status = None
