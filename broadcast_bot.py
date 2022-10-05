@@ -119,6 +119,10 @@ Startup procedure used to initiate @flask_app.before_first_request
 def startup():
     return "Hello World!"
     
+@flask_app.route("/")
+def root():
+    return "Hello World!"
+
 async def get_room_membership(room_type = ["direct", "group"]):
     membership_list = webex_api.memberships.list()
     for membership in membership_list:
@@ -128,7 +132,7 @@ async def get_room_membership(room_type = ["direct", "group"]):
 """
 Handle Webex webhook events.
 """
-@flask_app.route("/", methods=["POST"])
+@flask_app.route("/webhook", methods=["POST"])
 async def webex_webhook():
     webhook = request.get_json(silent=True)
     logger.debug("Webhook received: {}".format(webhook))
@@ -138,7 +142,7 @@ async def webex_webhook():
     logger.debug("Webhook handling done.")
     return "OK"
         
-@flask_app.route("/", methods=["GET"])
+@flask_app.route("/webhook", methods=["GET"])
 def webex_webhook_preparation():
     bot_info = get_bot_info()
     message = "<center><img src=\"{0}\" alt=\"{1}\" style=\"width:256; height:256;\"</center>" \
@@ -200,18 +204,31 @@ async def handle_webhook_event(webhook):
         if webhook.get('event') == "created":
             room_info = webex_api.rooms.get(webhook["data"]["roomId"])
             logger.debug(f"room info: {room_info}")
-            if room_info.isAnnouncementOnly:
-                logger.debug(f"room is announcement_only, ask actor to make me a moderator")
-                room_decoded = base64.b64decode(room_info.id)
-                room_uuid = re.findall(r"ciscospark:.*\/([^/]+)", room_decoded.decode())[0]
-                room_url = f"webexteams://im?space={room_uuid}"
-                logger.debug(f"room UUID: {room_uuid}, URL: {room_url}")
-                ask_message = f"Space [{room_info.title}]({room_url}) is **Announcement only**, please make sure I am a moderator"
+            bot_info = get_bot_info()
+            config = load_config()
+            if check_membership(room_info, bot_info, config):
+                if room_info.isAnnouncementOnly:
+                    logger.debug(f"room is announcement_only, ask actor to make me a moderator")
+                    room_decoded = base64.b64decode(room_info.id)
+                    room_uuid = re.findall(r"ciscospark:.*\/([^/]+)", room_decoded.decode())[0]
+                    room_url = f"webexteams://im?space={room_uuid}"
+                    logger.debug(f"room UUID: {room_uuid}, URL: {room_url}")
+                    ask_message = f"Space [{room_info.title}]({room_url}) is **Announcement only**, please make sure I am a moderator"
+                    try:
+                        result = webex_api.messages.create(toPersonId = webhook["actorId"], markdown = ask_message)
+                        logger.debug(f"asked actor for moderation: {result}")
+                    except ApiError as e:
+                        logger.error(f"failed to send message to {actor_info.emails[0]}: {e}")
+            else:
+                org_info = webex_api.organizations.get(bot_info.orgId)
+                logger.debug(f"my org info: {org_info}")
                 try:
-                    result = webex_api.messages.create(toPersonId = webhook["actorId"], markdown = ask_message)
-                    logger.debug(f"asked actor for moderation: {result}")
+                    msg_markdown = f"I am allowed to communicate only in Spaces owned by **{org_info.displayName}**."
+                    webex_api.messages.create(roomId = room_info.id, markdown = msg_markdown)
+                    result = webex_api.memberships.delete(webhook["data"]["id"])
+                    logger.debug(f"membership delete result: {result}")
                 except ApiError as e:
-                    logger.error(f"failed to send message to {actor_info.emails[0]}: {e}")
+                    logger.error(f"Webex API error while trying to delete myself from a space: {e}")
             
 def create_message(room_id, kwargs):
     try:
@@ -329,6 +346,13 @@ def check_destination(room_id, sender_info, bot_info, config):
             return False
     logger.debug(f"final result: {result}")
     return result
+    
+def check_membership(room_info, bot_info, config):
+    result = True
+    if config["membership"]["bots_own_org"]:
+        result = room_info.ownerId == bot_info.orgId
+    
+    return result
 
 async def manage_webhooks(target_url):
     """create a set of webhooks for the Bot
@@ -388,6 +412,7 @@ def delete_webhook(webhook):
 
 def create_webhook(resource, event, target_url):
     logger.debug(f"Creating for {resource,event}")
+    status = False
     try:
         if not flask_app.testing:
             result = webex_api.webhooks.create(name="Webhook for event \"{}\" on resource \"{}\"".format(event, resource), targetUrl=target_url, resource=resource, event=event)
