@@ -71,6 +71,7 @@ Create a copy of [default-config.json](default-config.json), for example **confi
 parameters as you wish. For example when hosting the Bot on Azure, create a file storage and save the config.json there.
 Then map the storage to the application. In the example below, the file is accessible to Bot at **/config/config.json**.
 <img src="./images/azure_1.png" width="50%">  
+
 <img src="./images/azure_2.png" width="50%">
   
 Following environment variables need to be set:
