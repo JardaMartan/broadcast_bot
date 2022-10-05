@@ -55,18 +55,18 @@ environment variable. The configuration has following sections:
 3. **membership** - determines the Bot Space membership criteria:
 * **bots_own_org** - Bot accepts only the membership in Spaces owned by its Org
 
-##How to install
+## How to install
 ### Create a Webex Bot account
 a) Login to https://developer.webex.com  
 b) Click on the user's icon in the top right corner and select **My Webex Apps**  
 c) Create a **Bot**. Note that Bot's e-mail address has to be unique across all Webex users, so include some org-specific info like `adams.broadcast.bot@webex.bot`.  
 d) Save **Bot Access Token** in a safe place, later you will copy it to **WEBEX_TEAMS_ACCESS_TOKEN** environment variable.
 
-###Install the Bot code
+### Install the Bot code
 Install the code in a serverless environment of your choice. Bot is written in Python 3 using Flask WSGI. It was tested
 with Python version 3.9. Required modules are in [requirements.txt](requirements.txt).
 
-###Configuration
+### Configuration
 Create a copy of [default-config.json](default-config.json), for example **config.json**. Set the configuration
 parameters as you wish. For example when hosting the Bot on Azure, create a file storage and save the config.json there.
 Then map the storage to the application. In the example below, the file is accessible to Bot at **/config/config.json**.
