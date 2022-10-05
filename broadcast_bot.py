@@ -42,6 +42,7 @@ from flask import Flask, request, redirect, url_for, make_response
 
 DEFAULT_AVATAR_URL= "http://bit.ly/SparkBot-512x512"
 PORT=5050
+MAX_URL_RETRIES = 10
 DEFAULT_CONFIG = json.loads("""
 {
   "source": {
@@ -174,7 +175,7 @@ async def handle_webhook_event(webhook):
                 if message.html is not None:
                     msg_markdown = re.sub(r"<spark-mention.*\/spark-mention>[\s]*", "", message.html)
                 else:
-                    msg_markdown = message.text
+                    msg_markdown = message.text if message.text is not None else ""
                 group_msg = {"markdown": f"Message from <@personId:{sender_info.id}>:  \n\n{msg_markdown}", "files": message.files}
                 direct_msg = {"markdown": f"Message from {sender_info.displayName} ({sender_info.emails[0]}):  \n\n{msg_markdown}", "files": message.files}
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -210,9 +211,23 @@ def create_message(room_id, kwargs):
             
             responses = []
             for url in files[:1]: # Webex API allows only a single file attachment
-                logger.debug(f"loading {url}")
-                responses.append(http.request("GET", url, headers=file_headers, preload_content=False))
-                logger.debug(f"loaded {url}")
+                url_loaded = False
+                count = 0
+                while not url_loaded and count < MAX_URL_RETRIES:
+                    logger.debug(f"loading {url}")
+                    head_response = http.request("HEAD", url, headers=file_headers)
+                    logger.debug(f"HEAD response headers: {head_response.getheaders()}")
+                    get_response = http.request("GET", url, headers=file_headers, preload_content=False)
+                    logger.debug(f"GET response headers: {get_response.getheaders()}")
+                    retry_after = float(get_response.getheader("retry-after", 0))
+                    if retry_after > 0:
+                        logger.info(f"file not ready, retry after {retry_after} seconds")
+                        time.sleep(retry_after)
+                        count += 1
+                    else:
+                        responses.append(get_response)
+                        logger.debug(f"loaded {url}")
+                        url_loaded = True
                 
             msg_data["roomId"] = room_id
                 
@@ -221,22 +236,27 @@ def create_message(room_id, kwargs):
                 file_name = re.findall(r"^attachment;.*filename=\"(.*)\"", disp)[0]
                 content_type = response.getheader("Content-Type")
                 logger.debug(f"received \"{file_name}\" of \"{content_type}\"")
+                send_as_file = True
                 if content_type == "application/json":
+                    send_as_file = False
                     logger.debug(f"JSON file {file_name} detected, trying to create an adaptive card")
                     reader = codecs.getreader("utf-8")
                     try:
-                        form = json.load(reader(response))
-                        msg_data["attachments"] = [wrap_form(form)]
-                        msg_data.pop("files", None) # remove file attachment
-                        msg_data["markdown"] = "Form attached"
+                        form = json.loads(response.data)
+                        attachment_msg = msg_data.copy()
+                        attachment_msg["attachments"] = [wrap_form(form)]
+                        attachment_msg.pop("files", None) # make sure there is no file attachment - mutually exclusive with "attachments"
+                        attachment_msg["markdown"] = "Form attached"
                         try:
-                            result = webex_api.messages.create(**msg_data)
+                            result = webex_api.messages.create(**attachment_msg)
+                            logger.debug(f"adaptive card send result: {result}")
                         except ApiError as e:
-                            logger.error(f"create message failed: {e}.")
+                            logger.error(f"create message with adaptive card failed: {e}.")
+                            send_as_file = True
                     except Exception as e:
-                        logger.error(f"create attachment card error: {e}")
-                else:
-                # reader = io.BufferedReader(response)
+                        logger.error(f"create adaptive card error: {e}")
+                        send_as_file = True
+                if send_as_file:
                     msg_data["files"] = (file_name, response.data, content_type) # Webex API allows only a single file attachment
                 
                     # logger.debug(f"sending to Webex API: {msg_data}")
