@@ -1,5 +1,5 @@
 # Broadcast Bot for Webex
-The Bot can be used to broadcast a Webex message or [Card](https://developer.webex.com/docs/buttons-and-cards) to
+The Bot can be used to broadcast a Webex message or a [Card](https://developer.webex.com/docs/buttons-and-cards) to
 multiple Spaces. For example an important notification or a marketing information.
 The Bot replicates a received message to a set of Spaces or 1-1 communications it is a member of.
 The set of spaces is determined by Bot's configuration. It can be:
@@ -12,8 +12,8 @@ Furthermore the message author is checked. It can be:
 - anyone from the Bot's Org
 - only a person from the configured list of authors
 
-Additionally the Bot can be configured to limit it's membership only to its own Org.
-If it is invited to a Space owned by different Org, it posts a message that it is not allowed
+Additionally the Bot can be configured to limit its membership only to its own Org.
+If it is invited to a Space owned by a different Org, it posts a message that it is not allowed
 to be a member of external Spaces and leaves.
 
 The Bot can be hosted as a publicly accessible [Webhook](https://developer.webex.com/docs/webhooks), for example
@@ -80,3 +80,14 @@ Following environment variables need to be set:
 
 Alternatively [python-dotenv](https://pypi.org/project/python-dotenv/) can be used to set
 the environment variables. See [.env_sample](.env_sample).
+
+### Setup webhook
+After the Bot code is installed and running, try first opening a root URL of the application.
+You should get **Hello world!** page.
+<img src="./images/bot_page_1.png" width="50%">
+
+If it works, open the URL with **/webhook** suffix. For example https://my_web_page.service.com/webhook.
+The GET request triggers the Webhook setup. If it is successful, the Bot should display a summary web page.
+<img src="./images/bot_page_2.png" width="50%">
+
+The Bot is now running. Try sending it a message, file or a JSON [Card](https://developer.webex.com/docs/buttons-and-cards). Then add the Bot to some Spaces or ask other users to add it to their Spaces.
