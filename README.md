@@ -84,10 +84,12 @@ the environment variables. See [.env_sample](.env_sample).
 ### Setup webhook
 After the Bot code is installed and running, try first opening a root URL of the application.
 You should get **Hello world!** page.
+
 <img src="./images/bot_page_1.png" width="50%">
 
 If it works, open the URL with **/webhook** suffix. For example https://my_web_page.service.com/webhook.
 The GET request triggers the Webhook setup. If it is successful, the Bot should display a summary web page.
+
 <img src="./images/bot_page_2.png" width="50%">
 
 The Bot is now running. Try sending it a message, file or a JSON [Card](https://developer.webex.com/docs/buttons-and-cards). Then add the Bot to some Spaces or ask other users to add it to their Spaces.
