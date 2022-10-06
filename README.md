@@ -75,11 +75,18 @@ Required Python modules are in [requirements.txt](requirements.txt), except for 
 
 ### Configuration
 Create a copy of [default_config.json](default_config.json), for example **config.json**. Set the configuration
-parameters as you wish. For example when hosting the Bot on Azure, create a file storage and save the config.json there.
+parameters for **source**, **destination** and **membership**.
+
+When hosting the Bot on Azure, create a file storage and save the config.json there.
 Then map the storage to the application. In the example below, the file is accessible to Bot at **/config/config.json**.
 <img src="./images/azure_1.png" width="50%">  
 
-<img src="./images/azure_2.png" width="50%">
+<img src="./images/azure_2.png" width="50%">  
+Set the environment variables of the application:
+<img src="./images/azure_3.png" width="50%">  
+
+When hosting the Bot on AWS Lambda, make sure the config.json is in the same directory as the Bot code.
+The **CONFIG_FILE** environment variable then needs to be set to **config.json** in the respective **.env_dev/.env_prod** file.
   
 Following environment variables need to be set:
 1. **WEBEX_TEAMS_ACCESS_TOKEN** - contains the Bot access token
