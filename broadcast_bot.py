@@ -40,6 +40,8 @@ from requests_toolbelt.multipart.encoder import MultipartEncoder
 from urllib.parse import urlparse
 import urllib3
 from flask import Flask, request, redirect, url_for, make_response
+import buttons_cards as bc
+import localization_strings as ls
 
 DEFAULT_AVATAR_URL= "http://bit.ly/SparkBot-512x512"
 PORT=5050
@@ -60,11 +62,6 @@ DEFAULT_CONFIG = json.loads("""
   }
 }
 """)
-
-EMPTY_CARD = {
-    "contentType": "application/vnd.microsoft.card.adaptive",
-    "content": None,
-}
 
 flask_app = Flask(__name__)
 flask_app.config["DEBUG"] = True
@@ -181,8 +178,8 @@ async def handle_webhook_event(webhook):
                     msg_markdown = re.sub(r"<spark-mention.*\/spark-mention>[\s]*", "", message.html)
                 else:
                     msg_markdown = message.text if message.text is not None else ""
-                group_msg = {"markdown": f"Message from <@personId:{sender_info.id}>:  \n\n{msg_markdown}", "files": message.files}
-                direct_msg = {"markdown": f"Message from {sender_info.displayName} ({sender_info.emails[0]}):  \n\n{msg_markdown}", "files": message.files}
+                group_msg = {"markdown": ls.LOCALES[config["locale"]]["loc_message_from_1"].format(sender_info.id, msg_markdown), "files": message.files}
+                direct_msg = {"markdown": ls.LOCALES[config["locale"]]["loc_message_from_2"].format(sender_info.displayName, sender_info.emails[0], msg_markdown), "files": message.files}
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                     local_loop = asyncio.get_event_loop()
                     task_list = []
@@ -213,7 +210,7 @@ async def handle_webhook_event(webhook):
                     room_uuid = re.findall(r"ciscospark:.*\/([^/]+)", room_decoded.decode())[0]
                     room_url = f"webexteams://im?space={room_uuid}"
                     logger.debug(f"room UUID: {room_uuid}, URL: {room_url}")
-                    ask_message = f"Space [{room_info.title}]({room_url}) is **Announcement only**, please make sure I am a moderator"
+                    ask_message = ls.LOCALES[config["locale"]]["loc_space_moderated"].format(room_info.title, room_url)
                     try:
                         result = webex_api.messages.create(toPersonId = webhook["actorId"], markdown = ask_message)
                         logger.debug(f"asked actor for moderation: {result}")
@@ -223,7 +220,7 @@ async def handle_webhook_event(webhook):
                 org_info = webex_api.organizations.get(bot_info.orgId)
                 logger.debug(f"my org info: {org_info}")
                 try:
-                    msg_markdown = f"I am allowed to communicate only in Spaces owned by **{org_info.displayName}**."
+                    msg_markdown = ls.LOCALES[config["locale"]]["loc_outside_org"].format(org_info.displayName)
                     webex_api.messages.create(roomId = room_info.id, markdown = msg_markdown)
                     result = webex_api.memberships.delete(webhook["data"]["id"])
                     logger.debug(f"membership delete result: {result}")
@@ -281,7 +278,7 @@ def create_message(room_id, kwargs):
                     try:
                         form = json.loads(response.data)
                         attachment_msg = msg_data.copy()
-                        attachment_msg["attachments"] = [wrap_form(form)]
+                        attachment_msg["attachments"] = [bc.wrap_form(form)]
                         attachment_msg.pop("files", None) # make sure there is no file attachment - mutually exclusive with "attachments"
                         attachment_msg["markdown"] = "Form attached"
                         try:
@@ -434,6 +431,8 @@ def load_config(default_config_file = "default_config.json", user_config_file = 
         logger.error(f"default configuration load failed: {e}")
         config = DEFAULT_CONFIG
         
+    config["locale"] = os.getenv("LOCALE", "en_US")
+        
     try:
         cfg = os.getenv("CONFIG_FILE", user_config_file)
         logger.debug(f"user config file: {cfg}")
@@ -448,12 +447,6 @@ def load_config(default_config_file = "default_config.json", user_config_file = 
     logger.debug(f"current configuration: {config}")
     return config
     
-def wrap_form(form):
-    card = EMPTY_CARD
-    card["content"] = form
-    
-    return card
-
 """
 Independent thread startup, see:
 https://networklore.com/start-task-with-flask/

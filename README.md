@@ -77,6 +77,7 @@ Then map the storage to the application. In the example below, the file is acces
 Following environment variables need to be set:
 1. **WEBEX_TEAMS_ACCESS_TOKEN** - contains the Bot access token
 2. **CONFIG_FILE** - contains path to the configuration file, for example /config/config.json
+3. **LOCALE** - locale string - see LOCALES in [localization_strings.py](localization_strings.py), default is **en_US**. If needed, add your own locale and submit a patch to this project.
 
 Alternatively [python-dotenv](https://pypi.org/project/python-dotenv/) can be used to set
 the environment variables. See [.env_sample](.env_sample).
