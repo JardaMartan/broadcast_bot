@@ -25,6 +25,7 @@ PyJWT
 python-dotenv==0.21.0
 requests
 requests-toolbelt
+Unidecode==1.3.6
 urllib3
 watchdog==2.1.9
 webexteamssdk
