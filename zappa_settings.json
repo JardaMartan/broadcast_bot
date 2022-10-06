@@ -1,0 +1,30 @@
+{
+  "base": {
+    "app_function": "broadcast_bot.flask_app",
+    "aws_region": "us-east-2",
+    "profile_name": "default",
+    "project_name": "broadcast-bot",
+    "runtime": "python3.9",
+    "memory_size": 192,
+    "timeout_seconds": 130,
+    "keep_warm": true,
+    "keep_warm_expression": "rate(4 minutes)",
+    "payload_compression": false,
+    "payload_minimum_compression_size": 16384,
+    "log_level": "WARNING"
+  },
+  "dev": {
+    "extends": "base",
+    "s3_bucket": "zappa-broadcast-dev",
+    "environment_variables": {
+      "DOT_ENV_FILE": ".env_dev"
+    }
+  },
+  "prod": {
+    "extends": "base",
+    "s3_bucket": "zappa-broadcast-prod",
+    "environment_variables": {
+      "DOT_ENV_FILE": ".env_prod"
+    }
+  }
+}
