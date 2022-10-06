@@ -66,7 +66,7 @@ d) Save **Bot Access Token** in a safe place, later you will copy it to **WEBEX_
 Install the code in a serverless environment of your choice. Bot is written in Python 3 using Flask WSGI. It was tested
 with Python version 3.9 on Azure and AWS Lambda. Sample configuration for [Zappa](https://github.com/zappa/Zappa)
 deployment on AWS Lambda is included in [zappa_settings.json](zappa_settings.json) and [.boto_sample](.boto_sample) 
-(note that zappa_settings.json refers to config_dev.json and config_prod.json which need to be created from [default_config.json](default_config.json)).
+(note that **zappa_settings.json** refers to **.env_dev** and **.env_prod** files which need to be created from [.env_sample](.env_sample)).
 Required Python modules are in [requirements.txt](requirements.txt), except for Zappa.
 
 ### Configuration
