@@ -85,7 +85,7 @@ Then map the storage to the application. In the example below, the file is acces
 Set the environment variables of the application:
 <img src="./images/azure_3.png" width="50%">  
 
-When hosting the Bot on AWS Lambda, make sure the config.json is in the same directory as the Bot code.
+When hosting the Bot on AWS Lambda, make sure the **config.json** is in the same directory as the Bot code.
 The **CONFIG_FILE** environment variable then needs to be set to **config.json** in the respective **.env_dev/.env_prod** file.
   
 Following environment variables need to be set:
