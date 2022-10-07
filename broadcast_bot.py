@@ -1,3 +1,56 @@
+#!/usr/bin/env python3
+"""Broadcast Bot for Webex team communication.
+
+Copyright (c) 2022 Cisco and/or its affiliates.
+
+This software is licensed to you under the terms of the Cisco Sample
+Code License, Version 1.1 (the "License"). You may obtain a copy of the
+License at
+
+               https://developer.cisco.com/docs/licenses
+
+All use of the material herein must be in accordance with the terms of
+the License. All rights not expressly granted by the License are
+reserved. Unless required by applicable law or agreed to separately in
+writing, software distributed under the License is distributed on an "AS
+IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+or implied.
+
+
+Bot algorithm/actions:
+
+1. Webhook subscription
+The Bot subscribes its Webhook URL to multiple Webex events:
+- new message created
+- Space membership created, deleted or updated
+
+2. Message broadcast
+If the Bot receives a message in 1-1 communication (preferred way) or via @mention in a Space it runs the following algorithm:
+1. check the message sender against Bot's configuration
+2. get the list of Bot's membership in Spaces and 1-1 communications
+3. use Bot's configuration to determine to which Spaces to replicate the message
+
+The message is then replicated this way:
+1. sender's identity is added to the beginning of the message
+2. if there is a file attached, only the first file is replicated for broadcast (it is a limitation of [Webex Messages API](https://developer.webex.com/docs/api/v1/messages/create-a-message))
+3. if the attached file type is JSON, the Bot attempts to send it as a [Card](https://developer.webex.com/docs/buttons-and-cards). If it fails, the file is sent as a standard attachment.
+
+3. Space membership
+Once the Bot is added to a Space, it checks the `membership` part of its configuration for `bots_own_org` parameter.
+If the parameter is `true`, it checks the ownership of the Space to which it was added. If the Space is owned by a
+different Webex Org than the Bot's own, the Bot posts a message that it is not allowed to take part in communication
+outside its own Org. Otherwise it silently accepts the membership.  
+There is one more special case - a Space in **announcement mode**. In this case the Bot sends a 1-1 message
+to the person who added it to the Space, that it needs to be promoted to a Space moderator. Otherwise it won't
+be able to send messages in the Space.
+"""
+
+__author__ = "Jaroslav Martan"
+__email__ = "jmartan@cisco.com"
+__version__ = "0.1.0"
+__copyright__ = "Copyright (c) 2022 Cisco and/or its affiliates."
+__license__ = "Cisco Sample Code License, Version 1.1"
+
 import asyncio
 import aiohttp
 import os
@@ -69,6 +122,9 @@ requests.packages.urllib3.disable_warnings()
 
 @flask_app.before_first_request
 def before_first_request():
+    """
+    initialize the Bot before serving any requests, see start_loop()
+    """
     me = get_bot_info()
     email = me.emails[0]
 
@@ -81,6 +137,12 @@ You can always go to https://developer.ciscospark.com/apps.html
 URL and generate a new access token.""".format(email))
 
 def get_bot_id():
+    """
+    get id of the Bot
+    
+    Returns:
+        id of the Bot
+    """
     bot_id = os.getenv("BOT_ID", None)
     if bot_id is None:
         me = get_bot_info()
@@ -90,6 +152,12 @@ def get_bot_id():
     return bot_id
     
 def get_bot_info():
+    """
+    get People info of the Bot
+    
+    Returns:
+        People object of the Bot itself
+    """
     try:
         me = webex_api.people.me()
         if me.avatar is None:
@@ -102,6 +170,12 @@ def get_bot_info():
         logger.error("Get bot info error, code: {}, {}".format(e.status_code, e.message))
         
 def get_bot_name():
+    """
+    get display name of the Bot
+    
+    Returns:
+        display name (description) of the Bot
+    """
     me = get_bot_info()
     return me.displayName
     
@@ -114,13 +188,32 @@ Startup procedure used to initiate @flask_app.before_first_request
 """
 @flask_app.route("/startup")
 def startup():
+    """
+    dummy page for Bot startup response
+    
+    Queried by start_loop(). It can be also used for verification that the Bot app is responding.
+    """
     return "Hello World!"
     
 @flask_app.route("/")
 def root():
+    """
+    dummy root page
+    
+    Nothing particularly interesting here.
+    """
     return "Hello World!"
 
 async def get_room_membership(room_type = ["direct", "group"]):
+    """
+    get a list of Bot's memberships
+    
+    Args:
+        room_type: list of room types to narrow down the response
+        
+    Returns:
+        list of roomIds the Bot is member of
+    """
     membership_list = webex_api.memberships.list()
     for membership in membership_list:
         if membership.json_data.get("roomType") in room_type:
@@ -131,6 +224,12 @@ Handle Webex webhook events.
 """
 @flask_app.route("/webhook", methods=["POST"])
 async def webex_webhook():
+    """
+    handle webhook events (HTTP POST)
+    
+    Returns:
+        a dummy text in order to generate HTTP "200 OK" response
+    """
     webhook = request.get_json(silent=True)
     logger.debug("Webhook received: {}".format(webhook))
     res = await handle_webhook_event(webhook)
@@ -141,6 +240,17 @@ async def webex_webhook():
         
 @flask_app.route("/webhook", methods=["GET"])
 def webex_webhook_preparation():
+    """
+    (re)create webhook registration
+    
+    The request URL is taken as a target URL for the webhook registration. Once
+    the application is running, open this target URL in a web browser
+    and the Bot registers all the necessary webhooks for its operation. Existing
+    webhooks are deleted.
+    
+    Returns:
+        a web page with webhook setup confirmation
+    """
     bot_info = get_bot_info()
     message = "<center><img src=\"{0}\" alt=\"{1}\" style=\"width:256; height:256;\"</center>" \
               "<center><h2><b>Congratulations! Your <i style=\"color:#ff8000;\">{1}</i> bot is up and running.</b></h2></center>".format(bot_info.avatar, bot_info.displayName)
@@ -156,6 +266,12 @@ def webex_webhook_preparation():
         
 # @task
 async def handle_webhook_event(webhook):
+    """
+    handle "messages" and "membership" events
+    
+    Messages are replicated to target Spaces based on the Bot configuration.
+    Membership checks the Bot configuration and eventualy posts a message and removes the Bot from the Space.
+    """
     action_list = []
     
     if webhook.get("resource") == "messages" and webhook.get("event") == "created":
@@ -228,6 +344,20 @@ async def handle_webhook_event(webhook):
                     logger.error(f"Webex API error while trying to delete myself from a space: {e}")
             
 def create_message(room_id, kwargs):
+    """
+    send a messages to the target room_id
+    
+    If a JSON file is attached, the Bot attempts to send it as a [Card](https://developer.webex.com/docs/buttons-and-cards).
+    Other file types are forwarded unchanged, however only the first file is sent due to a limitation
+    of Webex Messages API.
+    
+    Args:
+        room_id: target room Id
+        kwargs: dict of additional arguments which can be passed down to Webex API Message call
+        
+    Returns:
+        Message object
+    """
     try:
         logger.debug(f"received args: {kwargs}")
 
@@ -315,6 +445,17 @@ def create_message(room_id, kwargs):
         logger.error(f"Create message failed: {e}.")
         
 def check_sender(sender_info, bot_info, config):
+    """
+    check sender's email address against the Bot configuration
+    
+    Args:
+        sender_info: People object of the sender
+        bot_info: People object of the Bot
+        config: configuration dict
+    
+    Returns:
+        Boolean: sender allowed/blocked
+    """
     result = True
     if config["source"]["bots_own_org"]:
         logger.debug(f"check sender & bot orgId: {sender_info.orgId == bot_info.orgId}")
@@ -327,6 +468,18 @@ def check_sender(sender_info, bot_info, config):
     return result
         
 def check_destination(room_id, sender_info, bot_info, config):
+    """
+    check destination room_id against the Bot configuration
+    
+    Args:
+        room_id: id of the destination Space
+        sender_info: People object of the sender
+        bot_info: People object of the Bot
+        config: configuration dict
+    
+    Returns:
+        Boolean: destination allowed/blocked
+    """
     result = check_sender(sender_info, bot_info, config)
     if result and (config["destination"]["bots_own_org"] or config["destination"]["senders_own_org"]):
         try:
@@ -345,6 +498,17 @@ def check_destination(room_id, sender_info, bot_info, config):
     return result
     
 def check_membership(room_info, bot_info, config):
+    """
+    check Space to which the Bot was added  against the Bot configuration
+    
+    Args:
+        room_info: Room object of the Space to which the Bot was added
+        bot_info: People object of the Bot
+        config: configuration dict
+    
+    Returns:
+        Boolean: Space membership allowed/blocked
+    """
     result = True
     if config["membership"]["bots_own_org"]:
         result = room_info.ownerId == bot_info.orgId
@@ -352,11 +516,12 @@ def check_membership(room_info, bot_info, config):
     return result
 
 async def manage_webhooks(target_url):
-    """create a set of webhooks for the Bot
+    """
+    create a set of webhooks for the Bot
     webhooks are defined according to the resource_events dict
     
-    arguments:
-    target_url -- full URL to be set for the webhook
+    Args:
+        target_url: full URL to be set for the webhook
     """
     myUrlParts = urlparse(target_url)
     target_url = secure_scheme(myUrlParts.scheme) + "://" + myUrlParts.netloc + url_for("webex_webhook")
@@ -424,6 +589,13 @@ def secure_scheme(scheme):
     return re.sub(r"^http$", "https", scheme)
     
 def load_config(default_config_file = "default_config.json", user_config_file = "config/config.json"):
+    """
+    load Bot configuration
+    
+    "default_config_file" or DEFAULT_CONFIG is used as a template and then it can be replaced
+    with "user_config_file". Bot locale can be configured in configuration or in "LOCALE" environment
+    variable.
+    """
     try:
         with open(default_config_file) as cfg_file:
             config = json.load(cfg_file)
